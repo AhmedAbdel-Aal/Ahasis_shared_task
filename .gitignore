@@ -1,0 +1,37 @@
+# files
+*.json
+*.env
+*.log
+*.pdf
+*.csv
+.DS_Store
+.env
+.DS_Store
+ECHR_tutorial.ipynb
+model.safetensors
+.lock
+vector_store/data/
+vector_store/cache/
+chroma.sqlite3
+# python related files
+__pycache__/
+.ipynb_checkpoints/
+*.pyc
+
+# ignore everything in the vector_store directory
+vector_store/data/*
+vector_store/data/chroma_gtr_t5_xl_db/chroma.sqlite3
+
+*/chroma.sqlite3
+cache/
+# models
+*.bin
+*.pt
+*.pth
+*pickle
+
+
+# unignore results files
+!/Users/ahmed/Desktop/msc-24/TND/reasoning_eval/data/cot_facts_binary_reasonings.json
+!/Users/ahmed/Desktop/msc-24/TND/reasoning_eval/data/cot_facts_law_binary_reasonings.json
+!/Users/ahmed/Desktop/msc-24/TND/kc_classification_data/key_cases_lines/key_cases_lines.json
