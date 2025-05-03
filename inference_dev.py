@@ -15,6 +15,7 @@ import json
 import concurrent.futures
 from functools import partial
 import dotenv
+import datetime
 
 
 from xml_parser import extract_analysis_from_xml
@@ -174,6 +175,8 @@ def process_dataframe_parallel(
     max_workers: int = 4,
     batch_size: int = 10,
     delay: float = 0.1,
+    backend: str = "openai",
+    model: str = "gpt-4o",
 ) -> None:
     """
     Process the dataframe in parallel by calling LLM for multiple reviews simultaneously.
@@ -204,7 +207,12 @@ def process_dataframe_parallel(
     )
 
     # Create a partial function with fixed arguments
-    process_func = partial(process_single_review, prompt_template=prompt_template)
+    process_func = partial(
+        process_single_review,
+        prompt_template=prompt_template,
+        backend=backend,
+        model=model,
+    )
 
     # Process in batches to better control memory and rate limits
     batches = [
@@ -239,68 +247,121 @@ def process_dataframe_parallel(
             time.sleep(delay)
 
 
-def main_args():
+def create_experiment_directory(experiment_num: int) -> str:
     """
-    Main function to run the script with command line arguments.
+    Create experiment directory structure and return path to metadata file.
     """
-    parser = argparse.ArgumentParser(
-        description="Process sentiment analysis dataframe with LLM"
-    )
-    parser.add_argument("--input", "-i", required=True, help="Path to input dataframe")
-    parser.add_argument(
-        "--output", "-o", required=True, help="Path to output directory"
-    )
-    parser.add_argument(
-        "--prompt", "-p", required=True, help="Path to prompt template file"
-    )
-    parser.add_argument(
-        "--delay",
-        "-d",
-        type=float,
-        default=1.0,
-        help="Delay between LLM calls in seconds",
-    )
+    experiment_dir = f"outputs/experiment_{experiment_num}"
+    os.makedirs(experiment_dir, exist_ok=True)
+    os.makedirs(f"{experiment_dir}/output_dev", exist_ok=True)
+    os.makedirs(f"{experiment_dir}/output_test", exist_ok=True)
+    return experiment_dir
 
-    args = parser.parse_args()
 
-    # Load the dataframe
-    df = load_dataframe(args.input)
+def update_metadata(metadata_path: str, run_data: dict) -> None:
+    """
+    Update experiment metadata file with new run information.
+    """
+    if os.path.exists(metadata_path):
+        with open(metadata_path, "r") as f:
+            metadata = json.load(f)
+    else:
+        metadata = {
+            "experiment_number": run_data["experiment_number"],
+            "created_at": run_data["start_time"],
+            "prompt_file": run_data["prompt_file"],
+            "backend": run_data["backend"],
+            "model": run_data["model"],
+            "directory_structure": {
+                "output_dev": "output_dev",
+                "output_test": "output_test",
+            },
+            "runs": [],
+        }
 
-    # Load the prompt template
-    with open(args.prompt, "r", encoding="utf-8") as f:
-        prompt_template = f.read()
-
-    # Process the dataframe
-    process_dataframe(df, prompt_template, args.output, delay=args.delay)
-
-    logger.info("Processing complete")
+    metadata["runs"].append(run_data)
+    with open(metadata_path, "w") as f:
+        json.dump(metadata, f, indent=2)
 
 
 def main():
     """
-    Main function to run the script.
+    Main function to run the script with experiment tracking.
     """
-    # Example usage
-    input_file = "data/dev_subset.csv"
-    output_dir = "outputs/output_dev_1"
+    # Experiment configuration
+    experiment_num = 2  # Could be auto-incremented based on existing experiments
     prompt_template_file = "prompts/p1.py"
-    backend = "openai"  # or "deepseek", "mistral", etc.
-    model = "gpt-4o-mini"  # or any other model you want to use
+    backend = "openai"
+    model = "gpt-4o"
 
-    # Load the dataframe
-    df = load_dataframe(input_file)
+    # Create experiment directory
+    experiment_dir = create_experiment_directory(experiment_num)
+    metadata_path = f"{experiment_dir}/metadata.json"
 
-    # Load the prompt template
+    metadata = {
+        "experiment_number": experiment_num,
+        "created_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "prompt_file": prompt_template_file,
+        "backend": backend,
+        "model": model,
+        "directory_structure": {
+            "output_dev": "output_dev",
+            "output_test": "output_test",
+        },
+        "runs": [],
+    }
+    # Prepare run data
+    run_data = {
+        "run_id": len(metadata["runs"]) + 1 if os.path.exists(metadata_path) else 1,
+        "experiment_number": experiment_num,
+        "prompt_file": prompt_template_file,
+        "backend": backend,
+        "model": model,
+        "start_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "status": "running",
+        "processing": "dev",
+        "total_files": 0,
+        "processed_files": 0,
+        "changes": [],
+    }
+
+    # Load data and prompt
+    input_file = "data/dev_subset.csv"
+    output_dir = f"{experiment_dir}/output_dev"
+
+    df = load_dataframe(input_file)  # [:5]
+    run_data["total_files"] = len(df)
+
     with open(prompt_template_file, "r", encoding="utf-8") as f:
         prompt_template = f.read()
 
-    # Process the dataframe in parallel
-    # process_dataframe_parallel(df, prompt_template, output_dir, max_workers=4, batch_size=10, delay=0.1)
-    process_dataframe(
-        df, prompt_template, output_dir, delay=0.1, backend=backend, model=model
+    # Process data
+    # process_dataframe( df, prompt_template, output_dir, delay=0.1, backend=backend, model=model)
+    process_dataframe_parallel(
+        df,
+        prompt_template,
+        output_dir,
+        max_workers=8,
+        batch_size=10,
+        delay=0.1,
+        backend=backend,
+        model=model,
     )
 
-    logger.info("Processing complete")
+    # Update metadata with completion info
+    run_data.update(
+        {
+            "end_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "status": "completed",
+            "processed_files": len(df),
+            "changes": ["Processed initial dataset"],
+        }
+    )
+    update_metadata(metadata_path, run_data)
+
+    logger.info(
+        f"Experiment {experiment_num} completed. Results saved to {experiment_dir}"
+    )
 
 
 if __name__ == "__main__":

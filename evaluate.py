@@ -4,6 +4,8 @@ This script provides functions to evaluate sentiment analysis models for hotel r
 in Saudi and Darija dialects with multiple classification metrics.
 """
 
+import os
+import json
 import numpy as np
 import pandas as pd
 from sklearn.metrics import (
@@ -22,6 +24,8 @@ from sklearn.metrics import (
 import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import List, Dict, Tuple, Union, Optional
+
+from utils import load_json, save_json
 
 
 def compute_basic_metrics(y_true: List[float], y_pred: List[float]) -> Dict[str, float]:
@@ -63,6 +67,7 @@ def compute_class_metrics(
     """
     # Get classification report as dictionary
     report = classification_report(y_true, y_pred, output_dict=True)
+    print(report)
 
     # Extract metrics for each class (negative: 0.0, neutral: 1.0, positive: 2.0)
     class_metrics = {
@@ -206,7 +211,7 @@ def evaluate_model(
     evaluation_results = {
         "overall": compute_basic_metrics(y_true, y_pred),
         "per_class": compute_class_metrics(y_true, y_pred),
-        "advanced": compute_advanced_metrics(y_true, y_pred),
+        # "advanced": compute_advanced_metrics(y_true, y_pred),
     }
 
     # Add dialect-specific evaluation if dialects are provided
@@ -250,10 +255,10 @@ def print_evaluation_report(evaluation_results: Dict) -> None:
         print(f"  Support: {metrics.get('support', 0)}")
 
     # Advanced metrics
-    print("\n--- ADVANCED METRICS ---")
-    advanced = evaluation_results["advanced"]
-    print(f"Cohen's Kappa: {advanced['cohen_kappa']:.4f}")
-    print(f"Matthews Correlation Coefficient: {advanced['matthews_corrcoef']:.4f}")
+    # print("\n--- ADVANCED METRICS ---")
+    # advanced = evaluation_results["advanced"]
+    # print(f"Cohen's Kappa: {advanced['cohen_kappa']:.4f}")
+    # print(f"Matthews Correlation Coefficient: {advanced['matthews_corrcoef']:.4f}")
 
     # Dialect-specific metrics if available
     if "by_dialect" in evaluation_results:
@@ -268,65 +273,88 @@ def print_evaluation_report(evaluation_results: Dict) -> None:
     print("\n" + "=" * 50)
 
 
-def load_results_from_files(
-    true_file: str, pred_file: str
-) -> Tuple[List[float], List[float]]:
+def load_predicted_results(output_dir: str):
     """
-    Load ground truth and predictions from files.
-
-    Args:
-        true_file: Path to file with ground truth labels
-        pred_file: Path to file with predicted labels
-
-    Returns:
-        Tuple of lists containing ground truth and predicted labels
+    Load ground truth from dev data and predictions from experiment output files.
     """
     try:
-        with open(true_file, "r", encoding="utf-8") as f:
-            y_true = [float(line.strip()) for line in f if line.strip()]
+        # Load predictions from experiment output files
+        ids = []
+        y_pred = []
+        dialects_pred = []
 
-        with open(pred_file, "r", encoding="utf-8") as f:
-            y_pred = [float(line.strip()) for line in f if line.strip()]
+        for filename in os.listdir(output_dir):
+            if filename.endswith(".json"):
+                file_id = filename.split(".")[0]
+                result = load_json(os.path.join(output_dir, filename))
 
-        if len(y_true) != len(y_pred):
-            raise ValueError("Ground truth and predictions have different lengths")
+                ids.append(file_id)
+                y_pred.append(result["structured_data"]["overall_sentiment"])
+                dialects_pred.append(result["structured_data"]["dialect"])
+        # transform to dataframe
+        df_pred = pd.DataFrame(
+            {"ID": ids, "Sentiment_pred": y_pred, "dialect_pred": dialects_pred}
+        )
 
-        return y_true, y_pred
+        return df_pred
 
     except Exception as e:
         print(f"Error loading files: {e}")
-        return [], []
+        return None
+
+
+def align_evaluation_data(df_true: pd.DataFrame, df_pred: pd.DataFrame) -> tuple:
+    # Ensure ID columns are the same type (convert both to string)
+    df_true["ID"] = df_true["ID"].astype(float).astype(str)
+    df_pred["ID"] = df_pred["ID"].astype(float).astype(str)
+
+    # Merge dataframes on ID (inner join to only keep IDs present in both)
+    merged = pd.merge(
+        df_true[["ID", "Sentiment", "Dialect"]],
+        df_pred[["ID", "Sentiment_pred", "dialect_pred"]],
+        on="ID",
+        how="inner",
+    )
+
+    print(f"Number of samples in merged data: {len(merged)}")
+
+    # Convert to lists in consistent order
+    y_true = merged["Sentiment"].tolist()
+    y_pred = merged["Sentiment_pred"].tolist()
+    dialect_true = merged["Dialect"].tolist()
+    dialect_pred = merged["dialect_pred"].tolist()
+    ids = merged["ID"].tolist()
+
+    return y_true, y_pred, dialect_true, dialect_pred, ids
 
 
 def main():
     """
-    Example usage of the evaluation functions.
+    Main function to run the evaluation script.
     """
-    # Example data
-    y_true = [0.0, 1.0, 2.0, 0.0, 1.0, 2.0, 0.0, 1.0, 2.0]
-    y_pred = [0.0, 1.0, 1.0, 0.0, 0.0, 2.0, 0.0, 2.0, 2.0]
-    dialects = [
-        "Saudi",
-        "Saudi",
-        "Darija",
-        "Darija",
-        "Saudi",
-        "Saudi",
-        "Darija",
-        "Darija",
-        "Saudi",
-    ]
+    # Example usage
+    experiment_id = 2
+    experiment_dir = f"./outputs/experiment_{str(experiment_id)}/output_dev"  # Path to experiment directory
+    dev_data_file = "data/dev_subset.csv"  # Path to dev data
 
-    # Evaluate model
-    results = evaluate_model(y_true, y_pred, dialects=dialects, save_cm=True)
+    # Load results
+    df_pred = load_predicted_results(experiment_dir)
+    df_true = pd.read_csv(dev_data_file)
 
-    # Print report
-    print_evaluation_report(results)
-
-    print("\nExample of loading from files:")
-    print(
-        "y_true, y_pred = load_results_from_files('true_labels.txt', 'pred_labels.txt')"
+    # Align data
+    y_true, y_pred, dialect_true, dialect_pred = align_evaluation_data(df_true, df_pred)
+    evaluation_results = evaluate_model(
+        y_true,
+        y_pred,
+        dialects=dialect_true,
+        save_cm=True,
+        cm_save_path=f"./outputs/experiment_{str(experiment_id)}/confusion_matrix_experiment_{experiment_id}.png",
     )
+    # Print evaluation report
+    print_evaluation_report(evaluation_results)
+    # Save evaluation results to JSON file
+    output_dir = f"./outputs/experiment_{str(experiment_id)}/metrics.json"
+    save_json(output_dir, evaluation_results)
 
 
 if __name__ == "__main__":

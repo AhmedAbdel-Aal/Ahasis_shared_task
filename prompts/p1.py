@@ -146,4 +146,5 @@ Return your response in the following xml format:
   </aspects>
   <overall_sentiment> positive/neutral/negative </overall_sentiment>
   <overall_justification> your step-by-step analysis </overall_justification>
+</analysis>
 """
