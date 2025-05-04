@@ -333,7 +333,7 @@ def main():
     Main function to run the evaluation script.
     """
     # Example usage
-    experiment_id = 2
+    experiment_id = 3
     experiment_dir = f"./outputs/experiment_{str(experiment_id)}/output_dev"  # Path to experiment directory
     dev_data_file = "data/dev_subset.csv"  # Path to dev data
 
@@ -342,7 +342,9 @@ def main():
     df_true = pd.read_csv(dev_data_file)
 
     # Align data
-    y_true, y_pred, dialect_true, dialect_pred = align_evaluation_data(df_true, df_pred)
+    y_true, y_pred, dialect_true, dialect_pred, ids = align_evaluation_data(
+        df_true, df_pred
+    )
     evaluation_results = evaluate_model(
         y_true,
         y_pred,

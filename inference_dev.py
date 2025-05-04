@@ -82,10 +82,22 @@ def process_single_review(
     try:
         # Extract review text from the row
         review_text = row["Text"]
+        review_dialect = row["Dialect"]
 
         # Format the prompt with the review text
-        formatted_prompt = format_prompt(prompt_template, review=review_text)
-
+        if len(prompt_template) == 1:
+            formatted_prompt = format_prompt(
+                prompt_template, review=review_text, dialect=review_dialect
+            )
+        else:
+            if review_dialect == "Saudi":
+                formatted_prompt = format_prompt(
+                    prompt_template[0], review=review_text, dialect=review_dialect
+                )
+            else:
+                formatted_prompt = format_prompt(
+                    prompt_template[1], review=review_text, dialect=review_dialect
+                )
         # Call the LLM and get response
         llm_response = llm_call(formatted_prompt, backend=backend, model=model)
 
@@ -289,10 +301,10 @@ def main():
     Main function to run the script with experiment tracking.
     """
     # Experiment configuration
-    experiment_num = 2  # Could be auto-incremented based on existing experiments
-    prompt_template_file = "prompts/p1.py"
+    experiment_num = 4  # Could be auto-incremented based on existing experiments
+    prompt_template_file = "prompts/p4.py"
     backend = "openai"
-    model = "gpt-4o"
+    model = "gpt-4o-mini"
 
     # Create experiment directory
     experiment_dir = create_experiment_directory(experiment_num)
@@ -329,11 +341,12 @@ def main():
     input_file = "data/dev_subset.csv"
     output_dir = f"{experiment_dir}/output_dev"
 
-    df = load_dataframe(input_file)  # [:5]
+    df = load_dataframe(input_file)  # [:20]
     run_data["total_files"] = len(df)
 
-    with open(prompt_template_file, "r", encoding="utf-8") as f:
-        prompt_template = f.read()
+    from prompts.p3 import prompt_1, prompt_2
+
+    prompt_template = [prompt_1, prompt_2]
 
     # Process data
     # process_dataframe( df, prompt_template, output_dir, delay=0.1, backend=backend, model=model)
