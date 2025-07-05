@@ -1,0 +1,18 @@
+[project]
+name = "ahasis-shared-task"
+version = "0.1.0"
+description = "The code for the Ahasis 2025 Shared Task"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "dotenv>=0.9.9",
+    "groq>=0.24.0",
+    "ipykernel>=6.29.5",
+    "matplotlib>=3.10.1",
+    "mistralai>=1.7.0",
+    "openai>=1.77.0",
+    "pandas>=2.2.3",
+    "pre-commit>=4.2.0",
+    "scikit-learn>=1.6.1",
+    "seaborn>=0.13.2",
+]

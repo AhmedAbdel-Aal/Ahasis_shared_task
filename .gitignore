@@ -29,7 +29,7 @@ cache/
 *.pt
 *.pth
 *pickle
-
+*.zip
 
 # unignore results files
 !/Users/ahmed/Desktop/msc-24/TND/reasoning_eval/data/cot_facts_binary_reasonings.json
